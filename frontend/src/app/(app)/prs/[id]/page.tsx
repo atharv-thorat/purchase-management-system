@@ -120,9 +120,6 @@ export default function PRDetailPage() {
             “{pr.rejection_reason}”{pr.actions.includes("edit") && " — edit the request and resubmit; the approval chain starts again."}
           </Notice>
         )}
-        {pr.status === "PENDING_FINANCE" && pr.requester.role === "DEPT_HEAD" && (
-          <Notice tone="info" title="Raised by a department head">Goes straight to Finance for approval, whatever the amount.</Notice>
-        )}
 
         <Card>
           <Facts items={[

@@ -8,6 +8,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Form";
 import { Card } from "@/components/ui/Layout";
 import { Loading } from "@/components/ui/States";
 import { api } from "@/lib/api";
+import { isPositive, lineAmount, sumMoney } from "@/lib/decimal";
 import { addDaysISO, formatINR, todayISO } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import type { PRIn } from "@/types/api";
@@ -15,10 +16,9 @@ import type { PRIn } from "@/types/api";
 interface Line { item_id: string; quantity: string; estimated_unit_price: string }
 const blank: Line = { item_id: "", quantity: "", estimated_unit_price: "" };
 
-/** Preview only: the server computes the real totals (and rounds each line to the paisa). */
+/** Preview only: the server computes the real totals when the request is saved. */
 function previewTotal(line: Line): string | null {
-  const q = Number(line.quantity), p = Number(line.estimated_unit_price);
-  return q > 0 && p > 0 ? (Math.round(q * p * 100) / 100).toFixed(2) : null;
+  return isPositive(line.quantity) ? lineAmount(line.quantity, line.estimated_unit_price) : null;
 }
 
 export function PRForm({ initial, submitLabel, onSubmit }: {
@@ -35,7 +35,7 @@ export function PRForm({ initial, submitLabel, onSubmit }: {
   const [busy, setBusy] = useState(false);
 
   const update = (i: number, patch: Partial<Line>) => setLines((all) => all.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-  const total = lines.reduce((sum, l) => sum + Number(previewTotal(l) ?? 0), 0);
+  const total = sumMoney(lines.map(previewTotal));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +105,7 @@ export function PRForm({ initial, submitLabel, onSubmit }: {
         </table>
         <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
           <Button type="button" variant="ghost" size="sm" icon="plus" onClick={() => setLines((all) => [...all, { ...blank }])}>Add line</Button>
-          <p className="text-slate-600">Estimated total <span className="ml-2 text-lg font-semibold tabular-nums text-slate-900">{formatINR(total.toFixed(2))}</span></p>
+          <p className="text-slate-600">Estimated total <span className="ml-2 text-lg font-semibold tabular-nums text-slate-900">{formatINR(total)}</span></p>
         </div>
       </Card>
 

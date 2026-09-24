@@ -30,6 +30,11 @@ def get_setting(db: Session, key: SettingKey) -> str:
     return row.value if row else SETTING_DEFAULTS[key]
 
 
+def list_settings(db: Session) -> list[tuple[str, str]]:
+    """Every known setting with its stored value, or its default when never set."""
+    return [(key.value, get_setting(db, key)) for key in SettingKey]
+
+
 def finance_threshold(db: Session) -> Decimal:
     return Decimal(get_setting(db, SettingKey.FINANCE_APPROVAL_THRESHOLD))
 

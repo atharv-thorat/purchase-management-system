@@ -15,3 +15,11 @@ node_modules/
 frontend/.env.local
 
 .DS_Store
+
+# E2E (Playwright)
+frontend/.next-e2e/
+frontend/e2e-results/
+frontend/e2e-report/
+
+# TypeScript incremental build cache
+frontend/tsconfig.tsbuildinfo

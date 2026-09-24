@@ -18,6 +18,15 @@ export default function EditPRPage() {
 
   if (loading && !pr) return <Loading />;
   if (error || !pr) return error ? <ErrorState error={error} /> : null;
+  if (!pr.actions.includes("edit")) {
+    return (
+      <>
+        <PageHeader title={`Edit ${pr.pr_number}`} badge={<StatusBadge status={pr.status} size="lg" />}
+                    back={{ href: `/prs/${id}`, label: pr.pr_number }} />
+        <Notice tone="info" title="This request can't be edited">Only its requester can edit it, and only while it is a draft or rejected.</Notice>
+      </>
+    );
+  }
   return (
     <>
       <PageHeader title={`Edit ${pr.pr_number}`} badge={<StatusBadge status={pr.status} size="lg" />}

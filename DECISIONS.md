@@ -466,3 +466,38 @@ Q-numbers refer to the open questions in the first design pass (2026-09-24).
     them on Ctrl-C.
 - **Why:** The backend is the only place business rules live (D-26). The frontend's job is to
   show the API's answers clearly to a room watching a laptop.
+
+### D-57 — Frontend previews use exact decimals, rounded like the server
+- **Source:** Design (Phase 6 review; fixes a bug)
+- **Decision:** Figures the browser computes itself are done with exact scaled-integer
+  arithmetic in `frontend/src/lib/decimal.ts`, rounding half up to the paisa the same way as
+  D-53. These are the PR line previews, the pre-filled invoice total and the GRN form's
+  accepted quantity. They remain previews and defaults: the server's figures replace them.
+- **Why:** With floats, 2.5 kg × ₹10.01 pre-filled the invoice total as ₹25.02 while the server
+  computes ₹25.03, so a correct invoice would have come back as a false MISMATCH.
+
+### D-58 — Demo readiness: one-command reset, fully offline, reproducible anywhere
+- **Source:** Design (Phase 6)
+- **Decision:**
+  - `./dev.sh --reset` restores the exact demo starting data, whether the app is stopped or
+    already running (~2 s). A test seeds on two different dates and checks that everything
+    but timestamps is identical.
+  - Offline after first setup:
+    - Swagger UI 5 is vendored in `backend/app/static/swagger-ui` (Apache-2.0) and served
+      locally.
+    - The UI uses the system font, and Next.js telemetry is off.
+    - Installs run only when dependencies change.
+    - The E2E suite fails if any request leaves the machine.
+  - Portable scripts:
+    - Port checks use bash's `/dev/tcp`, not `lsof`, and file hashing uses POSIX `cksum`.
+    - The newest Python 3.11+ on PATH is picked automatically, and Node 18.17+ is checked.
+    - Ports can be changed with `PMS_BACKEND_PORT` / `PMS_FRONTEND_PORT`, and CORS and the
+      API URL follow them.
+    - `dev.sh` refuses to "reuse" a port held by another program.
+  - `run.sh` seeds via `python -m app.seed.seed --if-empty`, which checks the configured
+    database rather than looking for a `pms.db` file.
+  - The Playwright E2E suite runs on its own database and ports (:8011/:3011, `.next-e2e`),
+    so it can run beside a live demo without touching its data.
+  - A 403 is shown as "No access" with the API's message, not as a retryable error.
+- **Why:** The demo has to work first time on an interviewer-facing laptop, with or without
+  Wi-Fi, and recover from any mid-demo mistake in one command.

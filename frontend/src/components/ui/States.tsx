@@ -30,14 +30,16 @@ export function EmptyState({ icon = "inbox", title, children }: { icon?: IconNam
 
 export function ErrorState({ error, onRetry }: { error: ApiError; onRetry?: () => void }) {
   const notFound = error.status === 404;
+  const forbidden = error.status === 403;
+  const title = notFound ? "Not found" : forbidden ? "No access" : "Something went wrong";
   return (
     <div className="mx-auto mt-10 max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
       <div className="mx-auto mb-3 w-fit rounded-full bg-red-50 p-3 text-red-600"><Icon name="alert" className="h-6 w-6" /></div>
-      <h2 className="text-lg font-semibold text-slate-900">{notFound ? "Not found" : "Something went wrong"}</h2>
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <p className="mt-2 text-slate-600">
         {notFound ? "This record doesn't exist, or it isn't visible to your role." : error.message}
       </p>
-      {onRetry && !notFound && (
+      {onRetry && !notFound && !forbidden && (
         <button onClick={onRetry} className="mt-4 text-sm font-medium text-brand-600 hover:underline">Try again</button>
       )}
     </div>

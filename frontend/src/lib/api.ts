@@ -41,7 +41,7 @@ import type {
   Budget,
 } from "@/types/api";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 const TOKEN_KEY = "pms.token";
 
 /** An error response from the API: `message` is written for humans and shown as-is. */

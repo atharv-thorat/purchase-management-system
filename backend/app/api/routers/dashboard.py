@@ -10,10 +10,10 @@ from app.api import views
 from app.api.common import ERROR_RESPONSES, READ_ROLES, Allow, DateFrom, DateTo, PagingParams, in_date_range
 from app.core.deps import DbSession
 from app.models import AuditLog
-from app.models.enums import AuditAction, EntityType, Role
+from app.models.enums import AuditAction, EntityType
 from app.schemas.common import DepartmentRef, Page, TimelineEntry
 from app.schemas.dashboard import DashboardOut, DepartmentSpendOut, PendingPaymentsOut
-from app.services import access, dashboard_service, pr_service
+from app.services import access, dashboard_service
 
 router = APIRouter(tags=["dashboard & audit"], responses=ERROR_RESPONSES)
 
@@ -22,12 +22,12 @@ router = APIRouter(tags=["dashboard & audit"], responses=ERROR_RESPONSES)
 def dashboard(db: DbSession, user: Allow(*READ_ROLES)):
     """Everything the caller's dashboard shows, scoped to what they may see. Widgets that
     don't apply to the caller's role are null."""
+    approvals = dashboard_service.pending_approvals(db, user)
     mismatches = dashboard_service.mismatch_invoices(db, user)
     payments = dashboard_service.pending_payments(db, user)
     spend = dashboard_service.spend_vs_budget(db, user)
     return DashboardOut(
-        pending_approvals=[views.pending_approval(db, pr) for pr in pr_service.pending_approvals(db, user)]
-        if user.role in (Role.DEPT_HEAD, Role.FINANCE) else None,
+        pending_approvals=[views.pending_approval(db, pr) for pr in approvals] if approvals is not None else None,
         my_requests=dashboard_service.my_requests(db, user),
         pos_by_status=dashboard_service.pos_by_status(db, user),
         mismatch_invoices=[views.invoice_list_item(i) for i in mismatches] if mismatches is not None else None,

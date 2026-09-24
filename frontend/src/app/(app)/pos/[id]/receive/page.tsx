@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "@/components/ui/Form";
 import { Card, PageHeader } from "@/components/ui/Layout";
 import { EmptyState, ErrorState, Loading } from "@/components/ui/States";
 import { api } from "@/lib/api";
+import { isPositive, subtractQty } from "@/lib/decimal";
 import { formatQty, humanize, todayISO, trimZeros } from "@/lib/format";
 import { useAction, useApi } from "@/lib/hooks";
 
@@ -31,17 +32,18 @@ export default function ReceiveGoodsPage() {
 
   if (loading && !data) return <Loading />;
   if (error || !data) return error ? <ErrorState error={error} /> : null;
-  const pendingLines = data.lines.filter((l) => Number(l.qty_pending) > 0);
+  const pendingLines = data.lines.filter((l) => isPositive(l.qty_pending));
   const update = (lineId: number, patch: Partial<Row>) => setRows((r) => ({ ...r, [lineId]: { ...r[lineId], ...patch } }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const lines = data.lines
-      .filter((l) => Number(rows[l.po_line_id]?.received) > 0)
+      .filter((l) => isPositive(rows[l.po_line_id]?.received ?? ""))
       .map((l) => {
         const r = rows[l.po_line_id];
-        // Accepted is what arrived minus what was rejected; the server re-checks the arithmetic.
-        const accepted = (Number(r.received) - Number(r.rejected || 0)).toFixed(3);
+        // The storekeeper counts what arrived and what was rejected; accepted is the difference.
+        // The server re-validates received = accepted + rejected and every other GRN rule.
+        const accepted = subtractQty(r.received, r.rejected) ?? "";
         return { po_line_id: l.po_line_id, qty_received: r.received, qty_accepted: accepted,
                  qty_rejected: r.rejected || "0", rejection_reason: r.reason || null };
       });
@@ -66,8 +68,8 @@ export default function ReceiveGoodsPage() {
                 {data.lines.map((l) => {
                   const r = rows[l.po_line_id];
                   if (!r) return null;
-                  const done = Number(l.qty_pending) === 0;
-                  const accepted = Number(r.received || 0) - Number(r.rejected || 0);
+                  const done = !isPositive(l.qty_pending);
+                  const accepted = subtractQty(r.received, r.rejected);
                   return (
                     <tr key={l.po_line_id} className={done ? "bg-slate-50 text-slate-400" : ""}>
                       <td className="px-4 py-3"><div className="font-medium text-slate-900">{l.item.name}</div>
@@ -78,12 +80,12 @@ export default function ReceiveGoodsPage() {
                       <td className="px-4 py-3"><Input inputMode="decimal" value={r.rejected} disabled={done}
                                                         onChange={(e) => update(l.po_line_id, { rejected: e.target.value })} aria-label={`Rejected ${l.item.name}`} /></td>
                       <td className="px-4 py-3">
-                        {Number(r.rejected) > 0 && (
+                        {isPositive(r.rejected) && (
                           <Input value={r.reason} placeholder="e.g. damaged in transit" onChange={(e) => update(l.po_line_id, { reason: e.target.value })}
                                  aria-label={`Rejection reason ${l.item.name}`} />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium tabular-nums text-slate-900">{done ? "—" : formatQty(accepted.toFixed(3), l.item.unit)}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-slate-900">{done ? "—" : formatQty(accepted, l.item.unit)}</td>
                     </tr>
                   );
                 })}

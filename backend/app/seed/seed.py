@@ -1,6 +1,7 @@
 """Reset the database and load the demo data (SPEC "Seed data").
 
-    python -m app.seed.seed          # or ./reset_db.sh
+    python -m app.seed.seed              # reset + seed (or ./reset_db.sh, or ./dev.sh --reset)
+    python -m app.seed.seed --if-empty   # seed only if there's no data yet (what run.sh does)
 
 Drops every table, recreates the schema, then builds everything through the service layer:
 master data via master_service (only the demo users are inserted directly — someone has to
@@ -13,6 +14,7 @@ Timestamps are relative to now and squeezed into the current calendar month (See
 the budget figures and the over-budget warning on PR-0007 hold whatever day the seed runs.
 """
 
+import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -387,7 +389,18 @@ def summary(db: Session) -> str:
     return "\n".join(["Purchase requests:", *("  " + r for r in rows), "Invoices:", *("  " + i for i in invoices)])
 
 
+def _has_data() -> bool:
+    try:
+        with SessionLocal() as db:
+            return db.scalar(select(User.id).limit(1)) is not None
+    except Exception:  # no tables yet
+        return False
+
+
 def main() -> None:
+    if "--if-empty" in sys.argv[1:] and _has_data():
+        print(f"Database already seeded ({engine.url}); leaving it as it is.")
+        return
     reset_schema()
     with SessionLocal() as db:
         seed(db)

@@ -9,8 +9,8 @@ from sqlalchemy.orm import selectinload
 from app.api.common import ERROR_RESPONSES, READ_ROLES, Allow
 from app.core.deps import DbSession
 from app.core.errors import NotFound
-from app.models import Department, Item, Setting, Supplier, User
-from app.models.enums import SETTING_DEFAULTS, Role
+from app.models import Department, Item, Supplier, User
+from app.models.enums import Role
 from app.schemas.masters import (
     DepartmentIn,
     DepartmentOut,
@@ -159,8 +159,7 @@ def update_item(item_id: int, body: ItemUpdate, db: DbSession, user: Allow(AD)):
 
 @router.get("/settings", response_model=list[SettingOut])
 def list_settings(db: DbSession, _: Allow(AD, F)):
-    stored = {s.key: s.value for s in db.scalars(select(Setting))}
-    return [SettingOut(key=k.value, value=stored.get(k.value, default)) for k, default in SETTING_DEFAULTS.items()]
+    return [SettingOut(key=key, value=value) for key, value in master_service.list_settings(db)]
 
 
 @router.put("/settings/{key}", response_model=SettingOut)

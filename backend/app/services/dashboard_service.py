@@ -35,6 +35,13 @@ class DepartmentSpend:
         return self.committed > self.department.monthly_budget
 
 
+def pending_approvals(db: Session, user: User) -> list[PurchaseRequest] | None:
+    """The approval inbox widget: DEPT_HEAD and FINANCE only (None hides it for others)."""
+    if user.role not in (Role.DEPT_HEAD, Role.FINANCE):
+        return None
+    return pr_service.pending_approvals(db, user)
+
+
 def spend_vs_budget(db: Session, user: User) -> list[DepartmentSpend] | None:
     """FINANCE and ADMIN see every department; requesters and dept heads their own."""
     if user.role in (Role.FINANCE, Role.ADMIN):

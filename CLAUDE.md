@@ -25,11 +25,15 @@
 - Phase 3 (service layer + pytest suite) done: every SPEC rule in `app/services/`; the seed is
   built through the services.
 - Phase 4 (REST API, 52 operations under `/api`, conventions in D-54) done.
-- Phase 5 (Next.js 14 frontend in `frontend/`, conventions in D-56) done. Key screens in
-  `docs/screenshots/`. Next: README + demo script.
+- Phase 5 (Next.js 14 frontend in `frontend/`, conventions in D-56) done.
+- Phase 6 (review, fresh-clone test, offline/demo safety, E2E, README, cheat sheet) done.
+  See D-57, D-58. README.md is written for reviewers; docs/DEMO_CHEATSHEET.md for the demo.
 
 ## Commands
-- `./dev.sh` (repo root) — backend on :8000 + frontend on :3000; `--reset` reseeds first
+- `./dev.sh` (repo root) — backend on :8000 + frontend on :3000; `--reset` restores the demo
+  data (also works while running). `PMS_BACKEND_PORT` / `PMS_FRONTEND_PORT` move the ports.
+- `cd frontend && npm run e2e` — Playwright, isolated DB + ports (:8011/:3011), needs Chrome;
+  `npm run e2e:screenshots` also regenerates docs/screenshots.
 
 From `backend/`:
 - `./run.sh` — venv + deps, seeds on first run, API on http://localhost:8000 (docs at `/docs`)
@@ -57,5 +61,6 @@ From `backend/`:
 - The seed must pass `app/seed/verify.py`; extend the checks when adding invariants.
 - Frontend: buttons come ONLY from the API's `actions`; never add permission/business logic
   in `frontend/`. Money is formatted from decimal strings (`lib/format.ts`), never floats.
+  Any arithmetic the UI does for previews goes through `lib/decimal.ts` (D-57).
   Check with `npx tsc --noEmit`, `npx next lint`, `npm run build` (from `frontend/`; builds into
   `.next-build/`, so it's safe while the dev server runs).

@@ -79,3 +79,40 @@ def test_verify_catches_tampering(db, demo):
     assert any("qty_accepted" in p for p in problems)
     assert any("PR-0006: approved without final_approved_at" in p for p in problems)
     assert any("last audit row says PENDING_FINANCE" in p for p in problems)
+
+
+def _snapshot(db) -> list:
+    """Everything a demo shows except timestamps (which are relative to 'now' by design)."""
+    from app.models import AuditLog, GoodsReceipt, Payment, Quotation
+
+    return [
+        [(pr.pr_number, pr.status, str(pr.estimated_total), pr.requester.email,
+          [(ln.item.name, str(ln.quantity), str(ln.estimated_unit_price)) for ln in pr.lines],
+          [(a.level, a.action, a.approver.email, a.comment, a.over_budget) for a in pr.approval_logs])
+         for pr in db.scalars(select(PurchaseRequest).order_by(PurchaseRequest.id))],
+        [(q.pr.pr_number, q.supplier.name, str(q.total), q.is_selected) for q in db.scalars(select(Quotation).order_by(Quotation.id))],
+        [(po.po_number, po.status, str(po.total), [(str(pl.qty_accepted), str(pl.qty_invoiced)) for pl in po.lines])
+         for po in db.scalars(select(PurchaseOrder).order_by(PurchaseOrder.id))],
+        [(g.grn_number, [(str(gl.qty_accepted), str(gl.qty_rejected)) for gl in g.lines]) for g in db.scalars(select(GoodsReceipt))],
+        [(i.supplier_invoice_number, i.status, str(i.total), i.mismatch_details) for i in db.scalars(select(Invoice).order_by(Invoice.id))],
+        [(str(p.amount), p.reference_no) for p in db.scalars(select(Payment).order_by(Payment.id))],
+        [(a.entity_type, a.entity_id, a.action, a.from_status, a.to_status) for a in db.scalars(select(AuditLog).order_by(AuditLog.id))],
+    ]
+
+
+def test_reset_restores_exactly_the_same_demo_state(engine, password_hash):
+    """./dev.sh --reset (reset_db.sh) must give the identical starting point every time, whatever
+    day it runs — only timestamps move with the clock."""
+    from sqlalchemy.orm import Session
+
+    from app.seed.seed import reset_schema
+
+    snapshots = []
+    for seeded_at in (datetime(2026, 9, 24, 18, 0), datetime(2026, 11, 2, 8, 30)):
+        reset_schema(engine)
+        with Session(engine) as s:
+            clock.freeze(seeded_at)
+            seed(s, password_hash=password_hash, now=seeded_at)
+            s.commit()
+            snapshots.append(_snapshot(s))
+    assert snapshots[0] == snapshots[1]

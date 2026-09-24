@@ -9,6 +9,7 @@ import { Field, Input } from "@/components/ui/Form";
 import { Card, Notice, PageHeader } from "@/components/ui/Layout";
 import { ErrorState, Loading } from "@/components/ui/States";
 import { api } from "@/lib/api";
+import { isPositive, lineAmount, sumMoney } from "@/lib/decimal";
 import { formatINR, formatQty, todayISO, trimZeros } from "@/lib/format";
 import { useAction, useApi } from "@/lib/hooks";
 
@@ -30,13 +31,11 @@ export default function EnterInvoicePage() {
   useEffect(() => {
     if (!po) return;
     setRows(Object.fromEntries(po.lines.map((l) => [l.id, {
-      include: Number(l.qty_uninvoiced) > 0, qty: trimZeros(l.qty_uninvoiced), price: l.unit_price }])));
+      include: isPositive(l.qty_uninvoiced), qty: trimZeros(l.qty_uninvoiced), price: l.unit_price }])));
   }, [po]);
 
-  const suggested = po ? po.lines.reduce((sum, l) => {
-    const r = rows[l.id];
-    return r?.include ? sum + Math.round(Number(r.qty) * Number(r.price) * 100) / 100 : sum;
-  }, 0).toFixed(2) : "0.00";
+  // Suggested total = sum of the lines, rounded exactly as the server does (lib/decimal.ts).
+  const suggested = po ? sumMoney(po.lines.map((l) => (rows[l.id]?.include ? lineAmount(rows[l.id].qty, rows[l.id].price) : null))) : "0.00";
   useEffect(() => { if (!totalTouched) setTotal(suggested); }, [suggested, totalTouched]);
 
   if (loading && !po) return <Loading />;
