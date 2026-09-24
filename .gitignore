@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local SQLite database (recreate with backend/reset_db.sh)
+backend/*.db
+backend/*.db-journal
+
+# Node / Next.js
+node_modules/
+.next/
+frontend/.env.local
+
+.DS_Store
