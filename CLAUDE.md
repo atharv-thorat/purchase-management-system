@@ -24,9 +24,14 @@
 - Phase 1 (design) done. Phase 2 (models, auth, scoping, seed) done and committed.
 - Phase 3 (service layer + pytest suite) done: every SPEC rule in `app/services/`; the seed is
   built through the services.
-- Phase 4 (REST API, 52 operations under `/api`, conventions in D-54) done. Next: frontend.
+- Phase 4 (REST API, 52 operations under `/api`, conventions in D-54) done.
+- Phase 5 (Next.js 14 frontend in `frontend/`, conventions in D-56) done. Key screens in
+  `docs/screenshots/`. Next: README + demo script.
 
-## Commands (from `backend/`)
+## Commands
+- `./dev.sh` (repo root) — backend on :8000 + frontend on :3000; `--reset` reseeds first
+
+From `backend/`:
 - `./run.sh` — venv + deps, seeds on first run, API on http://localhost:8000 (docs at `/docs`)
 - `./run.sh --reset` / `./reset_db.sh` — drop all tables, recreate, reseed (safe while running)
 - `.venv/bin/python -m pytest` — full suite (fresh SQLite file per test, ~10 s)
@@ -50,3 +55,7 @@
 - Tests: use the `w` (World) fixture to reach any state via services; the clock is frozen at
   `tests.conftest.NOW`; move it with `w.later(...)` or `clock.freeze(...)`.
 - The seed must pass `app/seed/verify.py`; extend the checks when adding invariants.
+- Frontend: buttons come ONLY from the API's `actions`; never add permission/business logic
+  in `frontend/`. Money is formatted from decimal strings (`lib/format.ts`), never floats.
+  Check with `npx tsc --noEmit`, `npx next lint`, `npm run build` (from `frontend/`; builds into
+  `.next-build/`, so it's safe while the dev server runs).

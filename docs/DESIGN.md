@@ -103,13 +103,13 @@ purchase-management/
 │       └── test_api_access.py            # auth, 403/404/409/422 bodies, scoping, filters, dashboards, CORS
 │
 └── frontend/
-    ├── package.json              # `npm run dev` is the one command
+    ├── package.json              # `npm run dev`; ./dev.sh at the root starts backend + frontend
     ├── next.config.js
     ├── tailwind.config.ts
     ├── .env.local.example        # NEXT_PUBLIC_API_URL=http://localhost:8000
     └── src/
         ├── app/
-        │   ├── layout.tsx
+        │   ├── layout.tsx, providers.tsx, icon.svg
         │   ├── login/page.tsx            # form + one-click demo-user buttons
         │   └── (app)/                    # authenticated shell (sidebar + header)
         │       ├── layout.tsx            # auth guard, role-based sidebar
@@ -128,7 +128,7 @@ purchase-management/
         │       │       ├── page.tsx      # quantities, linked docs, cancel / short-close actions
         │       │       ├── receive/page.tsx  # GRN form pre-filled with pending qty
         │       │       └── invoice/page.tsx  # invoice entry → match result
-        │       ├── grns/[id]/page.tsx
+        │       ├── grns/page.tsx, grns/[id]/page.tsx
         │       ├── invoices/
         │       │   ├── page.tsx
         │       │   └── [id]/page.tsx     # MATCHED/MISMATCH banner, rematch/reject, payments, balance due
@@ -140,19 +140,22 @@ purchase-management/
         │           ├── items/page.tsx
         │           └── settings/page.tsx
         ├── components/
-        │   ├── ui/                       # Button, Table, Modal, Input, Card, Toast
-        │   ├── StatusBadge.tsx
-        │   ├── StatusTimeline.tsx        # driven by /audit-logs
-        │   ├── Sidebar.tsx               # nav config filtered by role
-        │   ├── ReasonDialog.tsx          # shared "reason required" modal (reject, cancel, short-close)
-        │   ├── LineItemsEditor.tsx
-        │   ├── QuotationComparison.tsx
-        │   └── MatchResult.tsx
+        │   ├── ui/                       # Button, Table, Modal, Form, Layout (Card, PageHeader), States, Toast
+        │   ├── AppShell.tsx              # auth guard, role sidebar, header with user + switch-user
+        │   ├── StatusBadge.tsx           # one colour per status meaning (lib/status.ts)
+        │   ├── StatusTimeline.tsx        # renders the `timeline` from detail responses
+        │   ├── ReasonDialog.tsx          # approve / reject / cancel / short-close
+        │   ├── PRForm.tsx                # multi-line PR editor
+        │   ├── ListFilters.tsx           # URL-backed filters + pagination
+        │   ├── SpendChart.tsx            # spend vs budget bars (D-56)
+        │   ├── Progress.tsx              # accepted / invoiced progress bars
+        │   └── MatchBanner.tsx           # MATCHED / MISMATCH banner
         ├── lib/
-        │   ├── api.ts                    # fetch wrapper, JWT header, error → toast
-        │   ├── auth.tsx                  # AuthContext, token storage, useRole()
-        │   ├── permissions.ts            # which action buttons each role sees (ADMIN: none)
-        │   ├── nav.ts                    # sidebar items per role
+        │   ├── api.ts                    # typed client for every endpoint; JWT in memory + sessionStorage
+        │   ├── auth.tsx                  # AuthContext: login, switchUser, logout
+        │   ├── hooks.ts                  # useApi (load + error state), useAction (busy + toast)
+        │   ├── status.ts                 # status → colour tone
+        │   ├── nav.ts                    # sidebar items per role (buttons come from API `actions`)
         │   └── format.ts                 # INR formatting (₹10,00,000), dates
         └── types/api.ts                  # TS types mirroring Pydantic schemas
 ```

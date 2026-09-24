@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  /* Slightly larger base text for a laptop screen shown to a room. */
+  font-size: 15.5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+}

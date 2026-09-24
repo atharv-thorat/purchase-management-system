@@ -436,3 +436,33 @@ Q-numbers refer to the open questions in the first design pass (2026-09-24).
   Authorize dialog log in with email + demo123. The frontend keeps the JSON `/auth/login`.
   Tests use `httpx2`, which Starlette 1.x's TestClient requires.
 - **Why:** The demo can be driven from `/docs` without copying tokens by hand.
+
+### D-56 — Frontend conventions
+- **Source:** Design (Phase 5)
+- **Decision:**
+  - Next.js 14 App Router with client-rendered pages. The JWT is kept in memory and mirrored
+    to `sessionStorage`, so each browser tab can be a different demo user and a reload keeps
+    you logged in.
+  - **Action buttons come only from the API's `actions` list.** The frontend has no
+    permission rules of its own. Role is used only to choose sidebar links and the "New
+    request" shortcut, and every page is still enforced by the API.
+  - Reason fields on quotation selection appear only when the comparison's `selection` hints
+    say rule 6 needs them.
+  - API error messages are shown verbatim in toasts (bottom-right, so they never cover the
+    user switcher).
+  - "Switch user" does a full page load to the new user's dashboard. Re-rendering in place
+    let the old page refetch as the new user and flash a spurious 403.
+  - Money is formatted from the API's decimal strings as text (Indian grouping, ₹6,00,000.00),
+    never parsed into floats. Line-total previews in forms are display-only; the server's
+    figures replace them on save.
+  - System UI font (no web-font download), so a laptop demo works offline.
+  - Status colours are by meaning: green done/good, amber waiting, blue in progress, red
+    problem, orange exception, grey inert. They are defined once in `lib/status.ts`, and a
+    badge always shows its label.
+  - Spend-vs-budget chart: one shared ₹ axis, budget as a light track and committed spend as
+    the fill, with the reserved red plus an icon and label when over budget. Colours were
+    checked with the dataviz palette validator (all checks pass on white).
+  - `./dev.sh` in the repo root starts both servers (reusing any already running) and stops
+    them on Ctrl-C.
+- **Why:** The backend is the only place business rules live (D-26). The frontend's job is to
+  show the API's answers clearly to a room watching a laptop.
