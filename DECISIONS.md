@@ -272,9 +272,11 @@ Q-numbers refer to the open questions in the first design pass (2026-09-24).
 - **Decision:** All timestamps come from `app/core/clock.py` and are stored as naive
   `Asia/Kolkata` datetimes. The zone comes from configuration, not from the host machine.
 - **Why:** The budget month (D-05) is then a plain comparison and doesn't depend on the
-  laptop's timezone. Tests can pin the clock by patching one function.
+  laptop's timezone. Tests and the seed pin the clock with `clock.freeze` / `frozen_at`.
 
 ### D-41 — Seed writes history directly and must pass an invariant check
+- **Status:** Superseded in part by D-49 (the seed now calls the services). The invariant
+  check and the current-month timeline still apply.
 - **Source:** Design (Phase 2; workflow services not built yet)
 - **Decision:** The seed builds each scenario step by step. Every status change gets its
   AuditLog row, and approvals get ApprovalLog rows. `seed/verify.py` then checks the SPEC
@@ -311,3 +313,126 @@ Q-numbers refer to the open questions in the first design pass (2026-09-24).
 - **Why:** Rule 15 covers status changes, and GRNs and payments are what change PO and invoice
   status. Tying audit visibility to entity visibility keeps timelines from leaking
   out-of-scope documents (D-37).
+
+### D-45 — DRAFT PRs are visible only to their author
+- **Source:** Owner (Phase 2 review) · 2026-09-24
+- **Decision:** On top of every role's PR scope, a DRAFT is readable only by its requester.
+  Dept heads, FINANCE, PURCHASE and ADMIN get 404 for someone else's draft, and its audit rows
+  are hidden too. Once submitted, the PR follows the normal scopes.
+- **Why:** A draft is unfinished work. Nobody else needs to act on it or report on it.
+
+### D-46 — Each service action runs in a SAVEPOINT; the caller commits
+- **Source:** Design (Phase 3), implements D-28
+- **Decision:** Every public service action is wrapped in `@atomic` (`db.begin_nested()`). If
+  it raises, every change it made is rolled back: status, audit rows, lines, document number.
+  The session stays usable. Services never commit. A router commits once per request, and the
+  seed commits once at the end. The engine takes over BEGIN from pysqlite so SAVEPOINT works.
+- **Why:** An action is all-or-nothing even when one action calls another (select → create
+  PO, payment → auto-close), and callers can still group actions into a bigger unit.
+
+### D-47 — Write transactions take the SQLite lock up front
+- **Source:** Design (Phase 3)
+- **Decision:** Transactions start with `BEGIN IMMEDIATE`.
+- **Why:** Rules such as "total paid ≤ invoice total" and "cumulative accepted ≤ ordered"
+  read and then write. Serialising transactions means two requests can't both pass the check.
+  Demo traffic is tiny, so the lost concurrency doesn't matter.
+
+### D-48 — Input sanity rules added by the services
+- **Source:** Design (Phase 3); accepted as-is by the owner (Phase 3 review).
+- **Decision:** On top of the SPEC rules, the services refuse:
+  - PRs: `required_by` in the past (on create, edit and submit); the same item on two lines;
+    quantity or estimated price ≤ 0.
+  - Quotations: quote date in the future; `valid_until` before the quote date; entering a
+    quote that has already expired; negative delivery days; blank payment terms; price ≤ 0.
+    A quotation that any PO was made from, even a cancelled one, can't be edited or deleted.
+    A supplier deactivated after quoting can't be selected.
+  - GRNs: received date in the future or before the PO date; a line with 0 received.
+  - Invoices: invoice date in the future; total ≤ 0. The duplicate-number check ignores case
+    and surrounding spaces.
+  - Payments: date in the future or before the invoice date; blank reference number.
+  - Masters: GSTIN format and uniqueness; valid unique email; password ≥ 6 characters; an
+    ADMIN can't deactivate themselves or change their own role.
+  - Money has at most 2 decimals and quantities at most 3. Floats are refused. All problems
+    in one request are reported together.
+- **Why:** Each blocks data that is clearly wrong or would get stuck. For example, an invoice
+  with total 0 could never be paid, so its PO could never close. Stopping these at entry keeps
+  them out of the workflow.
+
+### D-49 — The seed is built through the services
+- **Source:** Owner (Phase 3 instruction)
+- **Decision:** Scenarios call the same service functions the API will call, with the clock
+  pinned to each step. Departments, suppliers, items and settings are created by ADMIN through
+  `master_service`. Only the 9 demo users are inserted directly, because something has to
+  exist before anyone can act. `verify.py` still runs before commit.
+- **Why:** The demo data is guaranteed to follow the real rules. For example, the MISMATCH
+  reason on SSST/26-27/0923 is produced by the real three-way match.
+
+### D-50 — Expired quotations don't count for rule 6
+- **Source:** Owner (Phase 3 review) · 2026-09-24. Replaces the design-pass proposal, which
+  counted expired quotes.
+- **Decision:** Both checks look only at quotations that have not expired on the day of
+  selection. "Fewer than 2 quotations" means fewer than 2 valid ones. "Not the lowest total"
+  compares against the lowest valid one. Expired quotations stay in the comparison, flagged
+  `is_expired`, with their prices shown. They are never marked lowest (per line or in total)
+  and can't be selected (D-14). `verify.py` re-checks each PO against the quotations that
+  were valid on the day it was created.
+- **Why:** An expired quote is no longer an offer the supplier stands behind. Counting it
+  would satisfy "two quotes" with a price nobody can buy at, or force a reason for passing up
+  an offer that no longer exists.
+
+### D-51 — Status-dependent refusals are 409; malformed input is 422; a failed match is a result
+- **Source:** Design (Phase 3), refines D-27
+- **Decision:** Every "not allowed in this status" refusal is a 409 `INVALID_TRANSITION`, even
+  when the action doesn't change that status. Examples: a quotation on a non-APPROVED PR, a
+  GRN on a SHORT_CLOSED PO, an invoice on an ISSUED PO. Such refusals go through
+  `state_machine.require_status`. Invalid input is a 422. A three-way match that fails is not
+  an error: the invoice is stored as MISMATCH with one reason per line, in the form
+  "Laptop: invoiced 10, accepted 8".
+- **Why:** The frontend can treat every 409 as "refresh, the record moved on", and every 422
+  as "fix the form". A mismatch has to be recorded, because it is the evidence the control
+  exists to capture.
+
+### D-52 — PR edits and deletions are audited and go through the state machine
+- **Source:** Design (Phase 3)
+- **Decision:** The PR table includes `EDITED` (DRAFT→DRAFT, REJECTED→REJECTED) and `DELETED`
+  (DRAFT→gone). Both are checked by the state machine and written to AuditLog like status
+  changes. `state_machine.allowed_actions()` exposes what the current status allows, for the UI.
+- **Why:** The timeline shows that a rejected PR was changed before resubmission, and a
+  deleted draft still leaves a trace.
+
+### D-53 — Line amounts are rounded to the paisa; totals are sums of line amounts
+- **Source:** Design (Phase 4; fixes a crash found while building the API)
+- **Decision:** `line_amount(qty, price)` = qty × price rounded to 2 places, half up. PR,
+  quotation and PO totals, and the invoice-lines sum in the three-way match, are all sums of
+  line amounts. Inputs are normalised to column scale (₹600 → 600.00, 50 → 50.000).
+- **Why:** Quantities can have 3 decimals (kg), so qty × price can fall below a paisa
+  (1.5 × ₹10.01 = ₹15.015). Money columns refuse to round (D-38), so such a PR used to fail
+  with a 500. Rounding each line, the way a printed invoice does, keeps every total in the
+  system agreeing to the paisa with what a supplier prints.
+
+### D-54 — API conventions
+- **Source:** Design (Phase 4)
+- **Decision:**
+  - Handlers: role check → load the record in the caller's scope (404 if outside it) →
+    service → commit → present. No rules in routers.
+  - Role check on every endpoint. For GETs the allowed roles come from `access.READ_SCOPES`,
+    so the route check and the row scoping can't drift apart.
+  - Money and quantities are JSON strings ("73500.00"), so no precision is lost.
+  - Lists: `page` / `page_size` (max 100), newest first, `{items, total, page, page_size,
+    pages}`. Filters: `status` (repeatable), department, supplier, PO, date range, `q` text.
+  - Detail responses carry everything a screen needs. Parts the caller may not read (GRNs for
+    FINANCE, invoices for STORE, payments for PURCHASE) come back as `null`, not an error.
+    `actions` lists what the caller can do right now; ADMIN always gets `[]`.
+  - Action endpoints return the updated detail of the record the screen shows (approve → PR,
+    select → the new PO, payment → the invoice, whose `po.status` shows an auto-close).
+  - One error body everywhere: `{error, message, details?}`, including unknown routes (404),
+    wrong methods (405) and database-constraint conflicts (409 `CONFLICT`).
+- **Why:** The frontend can render messages and buttons straight from the API, with no
+  permission logic of its own to keep in sync.
+
+### D-55 — Swagger login and test client
+- **Source:** Design (Phase 4)
+- **Decision:** A hidden `POST /api/auth/token` (OAuth2 password form) lets Swagger's
+  Authorize dialog log in with email + demo123. The frontend keeps the JSON `/auth/login`.
+  Tests use `httpx2`, which Starlette 1.x's TestClient requires.
+- **Why:** The demo can be driven from `/docs` without copying tokens by hand.

@@ -5,7 +5,7 @@ from typing import Annotated
 
 import jwt
 from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.db import get_db
@@ -14,19 +14,20 @@ from app.core.security import decode_access_token
 from app.models.enums import Role
 from app.models.master import User
 
-_bearer = HTTPBearer(auto_error=False)
+# Bearer tokens. tokenUrl lets Swagger's "Authorize" dialog log in with email + password.
+_bearer = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 
 DbSession = Annotated[Session, Depends(get_db)]
 
 
 def get_current_user(
     db: DbSession,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    token: Annotated[str | None, Depends(_bearer)],
 ) -> User:
-    if credentials is None:
+    if not token:
         raise Unauthorized("Not authenticated")
     try:
-        user_id = decode_access_token(credentials.credentials)
+        user_id = decode_access_token(token)
     except jwt.ExpiredSignatureError:
         raise Unauthorized("Session expired, please log in again", code="TOKEN_EXPIRED") from None
     except (jwt.InvalidTokenError, ValueError):

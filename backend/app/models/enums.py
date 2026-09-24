@@ -89,6 +89,8 @@ class EntityType(StrEnum):
 class AuditAction(StrEnum):
     # purchase request
     CREATED = "CREATED"
+    EDITED = "EDITED"
+    DELETED = "DELETED"
     SUBMITTED = "SUBMITTED"
     RESUBMITTED = "RESUBMITTED"
     APPROVED = "APPROVED"

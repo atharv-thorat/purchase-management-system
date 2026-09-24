@@ -7,6 +7,8 @@ Two kinds of refusal:
 
 REQUESTER and DEPT_HEAD scopes are anchored on the PR: a requester sees documents linked to
 their own PRs, a dept head those linked to any PR of their department.
+
+On top of every scope, a DRAFT PR is visible only to its author (D-45).
 """
 
 from collections.abc import Callable, Sequence
@@ -97,18 +99,31 @@ def read_scope(model: type, user: User) -> Scope | None:
     return READ_SCOPES[model].get(user.role)
 
 
+def readers(model: type) -> tuple[Role, ...]:
+    """Roles with any read access to `model`; used as the route-level role check on GETs."""
+    return tuple(READ_SCOPES[model])
+
+
 def can_read(model: type, user: User) -> bool:
     return read_scope(model, user) is not None
 
 
-def visible_filter(model: type, user: User) -> ColumnElement[bool]:
-    """WHERE clause limiting `model` rows to what `user` may read. 403 if none at all."""
+def _scope_clause(model: type, user: User) -> ColumnElement[bool] | None:
+    """Row restriction for `model`, or None when the user may read every row. 403 if none at all."""
     scope = read_scope(model, user)
     if scope is None:
         raise Forbidden(f"Your role ({user.role}) cannot view {LABELS[model]}s")
-    if scope is Scope.ALL:
-        return true()
 
+    clause = _pr_scope_clause(model, user, scope)
+    if model is PurchaseRequest:
+        drafts_private = or_(PurchaseRequest.status != PRStatus.DRAFT, PurchaseRequest.requester_id == user.id)
+        clause = drafts_private if clause is None else clause & drafts_private
+    return clause
+
+
+def _pr_scope_clause(model: type, user: User, scope: Scope) -> ColumnElement[bool] | None:
+    if scope is Scope.ALL:
+        return None
     if scope is Scope.OWN:
         pr_ids = select(PurchaseRequest.id).where(PurchaseRequest.requester_id == user.id)
     elif scope is Scope.DEPARTMENT:
@@ -120,6 +135,12 @@ def visible_filter(model: type, user: User) -> ColumnElement[bool]:
     else:  # pragma: no cover - exhaustive over Scope
         raise AssertionError(scope)
     return _LINK_TO_PR[model](pr_ids)
+
+
+def visible_filter(model: type, user: User) -> ColumnElement[bool]:
+    """WHERE clause limiting `model` rows to what `user` may read. 403 if none at all."""
+    clause = _scope_clause(model, user)
+    return true() if clause is None else clause
 
 
 def scoped_select(model: type[T], user: User) -> Select[tuple[T]]:
@@ -146,13 +167,13 @@ def audit_visible_filter(user: User) -> ColumnElement[bool]:
     """Audit rows are readable when the entity they describe is readable."""
     clauses: list[ColumnElement[Any]] = []
     for entity_type, model in AUDITED_MODELS.items():
-        scope = read_scope(model, user)
-        if scope is None:
+        if not can_read(model, user):
             continue
         of_type = AuditLog.entity_type == entity_type
-        if scope is Scope.ALL:
+        clause = _scope_clause(model, user)
+        if clause is None:
             clauses.append(of_type)
         else:
-            visible_ids = select(model.id).where(visible_filter(model, user))  # type: ignore[attr-defined]
+            visible_ids = select(model.id).where(clause)  # type: ignore[attr-defined]
             clauses.append(of_type & AuditLog.entity_id.in_(visible_ids))
     return or_(*clauses) if clauses else false()

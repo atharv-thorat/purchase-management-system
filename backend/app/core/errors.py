@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 class DomainError(Exception):
@@ -73,3 +75,17 @@ def register_error_handlers(app: FastAPI) -> None:
         where = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
         message = f"{where}: {first.get('msg')}" if where else str(first.get("msg", "Invalid request"))
         return JSONResponse(_body("VALIDATION_ERROR", message, jsonable_encoder(errors)), 422)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(_: Request, exc: StarletteHTTPException):
+        # Unknown routes, wrong methods: same body shape as everything else.
+        codes = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
+        message = {404: "Not found", 405: "Method not allowed"}.get(exc.status_code, str(exc.detail))
+        return JSONResponse(_body(codes.get(exc.status_code, f"HTTP_{exc.status_code}"), message),
+                            exc.status_code, headers=getattr(exc, "headers", None))
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity(_: Request, exc: IntegrityError):
+        # A database constraint caught what the services should have (D-39). The request's
+        # session is rolled back when it closes.
+        return JSONResponse(_body("CONFLICT", "The change conflicts with existing data; reload and try again"), 409)

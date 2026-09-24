@@ -23,6 +23,7 @@ from app.models.enums import (
     PRStatus,
     Role,
 )
+from app.services._common import line_amount
 
 ZERO = Decimal("0")
 
@@ -36,7 +37,7 @@ def verify(db: Session) -> list[str]:
         tag = pr.pr_number
         if not pr.lines:
             fail(f"{tag}: has no lines")
-        if pr.estimated_total != sum((ln.quantity * ln.estimated_unit_price for ln in pr.lines), ZERO):
+        if pr.estimated_total != sum((line_amount(ln.quantity, ln.estimated_unit_price) for ln in pr.lines), ZERO):
             fail(f"{tag}: estimated_total does not equal the sum of its lines")
         if pr.requester.role not in DEPARTMENT_ROLES or pr.department_id != pr.requester.department_id:
             fail(f"{tag}: requester must be a REQUESTER/DEPT_HEAD of the PR's department")
@@ -73,7 +74,7 @@ def verify(db: Session) -> list[str]:
         priced = sorted(ql.pr_line_id for ql in q.lines)
         if priced != sorted(ln.id for ln in q.pr.lines):
             fail(f"{tag}: must price every PR line exactly once")
-        if q.total != sum((ql.unit_price * ql.pr_line.quantity for ql in q.lines), ZERO):
+        if q.total != sum((line_amount(ql.pr_line.quantity, ql.unit_price) for ql in q.lines), ZERO):
             fail(f"{tag}: total does not equal the sum of its lines")
         live_po = any(po.quotation_id == q.id and po.status is not POStatus.CANCELLED for po in q.pr.purchase_orders)
         if q.is_selected != live_po:
@@ -82,17 +83,23 @@ def verify(db: Session) -> list[str]:
     # ---- purchase orders --------------------------------------------------------------------
     for po in db.scalars(select(PurchaseOrder)):
         tag = po.po_number
-        if po.total != sum((pl.qty_ordered * pl.unit_price for pl in po.lines), ZERO):
+        if po.total != sum((line_amount(pl.qty_ordered, pl.unit_price) for pl in po.lines), ZERO):
             fail(f"{tag}: total does not equal the sum of its lines")
         if po.supplier_id != po.quotation.supplier_id or po.quotation.pr_id != po.pr_id:
             fail(f"{tag}: supplier/PR differ from its quotation")
         snapshot = sorted((ql.pr_line.item_id, ql.pr_line.quantity, ql.unit_price) for ql in po.quotation.lines)
         if snapshot != sorted((pl.item_id, pl.qty_ordered, pl.unit_price) for pl in po.lines):
             fail(f"{tag}: lines are not a snapshot of the selected quotation")
-        if len(po.pr.quotations) < 2 and not po.single_quote_justification:
-            fail(f"{tag}: single quotation without justification")
-        if po.quotation.total > min(q.total for q in po.pr.quotations) and not po.selection_reason:
-            fail(f"{tag}: non-lowest quotation selected without a reason")
+        # Rule 6 as it stood when the PO was created: only quotations that existed and were
+        # still valid that day count (D-50).
+        created_on = po.created_at.date()
+        valid_then = [q for q in po.pr.quotations if q.created_at <= po.created_at and q.valid_until >= created_on]
+        if po.quotation not in valid_then:
+            fail(f"{tag}: created from a quotation that had expired")
+        elif len(valid_then) < 2 and not po.single_quote_justification:
+            fail(f"{tag}: single valid quotation without justification")
+        elif po.quotation.total > min(q.total for q in valid_then) and not po.selection_reason:
+            fail(f"{tag}: non-lowest valid quotation selected without a reason")
 
         accepted: dict[int, Decimal] = defaultdict(lambda: ZERO)
         for grn in po.goods_receipts:
@@ -144,7 +151,7 @@ def verify(db: Session) -> list[str]:
         if inv.status in MATCHED_INVOICE_STATUSES:
             if any(il.unit_price != il.po_line.unit_price for il in inv.lines):
                 fail(f"{tag}: matched despite a price difference")
-            if inv.total != sum((il.qty * il.unit_price for il in inv.lines), ZERO):
+            if inv.total != sum((line_amount(il.qty, il.unit_price) for il in inv.lines), ZERO):
                 fail(f"{tag}: matched despite a total that differs from its lines")
         if inv.status is InvoiceStatus.MISMATCH and not inv.mismatch_details:
             fail(f"{tag}: MISMATCH without details")

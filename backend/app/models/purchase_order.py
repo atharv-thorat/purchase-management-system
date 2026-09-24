@@ -80,8 +80,8 @@ class POLine(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("item.id"))
     qty_ordered: Mapped[Decimal] = mapped_column(Quantity)
     unit_price: Mapped[Decimal] = mapped_column(Money)  # SNAPSHOT of the quotation price; never read live
-    qty_accepted: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0"))  # Σ GRN accepted
-    qty_invoiced: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0"))  # Σ MATCHED invoices (D-04)
+    qty_accepted: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0.000"))  # Σ GRN accepted
+    qty_invoiced: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0.000"))  # Σ MATCHED invoices (D-04)
 
     po: Mapped[PurchaseOrder] = relationship(back_populates="lines")
     item: Mapped[Item] = relationship()

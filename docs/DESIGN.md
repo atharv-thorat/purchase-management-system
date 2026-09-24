@@ -42,7 +42,8 @@ purchase-management/
 │   │   │   └── sequence.py       # document number counters (PR-/PO-/GRN-)
 │   │   ├── schemas/              # Pydantic v2 request/response models (mirrors models/)
 │   │   ├── services/             # ALL business rules live here — no rules in routers
-│   │   │   ├── state_machine.py  # per-entity transition tables + assert_transition()
+│   │   │   ├── _common.py        # ensure_role, input validation, ₹/qty formatting for messages
+│   │   │   ├── state_machine.py  # transition tables, transition()/create()/delete(), require_status()
 │   │   │   ├── access.py         # read-scope filters per role (D-08, D-09)
 │   │   │   ├── audit_service.py  # record_status_change()
 │   │   │   ├── numbering.py      # next_number("PR") → PR-0001
@@ -52,10 +53,13 @@ purchase-management/
 │   │   │   ├── grn_service.py    # receipt validation, PO status recompute
 │   │   │   ├── invoice_service.py    # three-way match, rematch, reject, duplicate check
 │   │   │   ├── payment_service.py    # payment validation, invoice/PO status update
+│   │   │   ├── actions.py        # per-user "available actions" hints for detail responses
 │   │   │   ├── dashboard_service.py
 │   │   │   └── master_service.py
 │   │   ├── api/
-│   │   │   └── routers/          # thin: auth → parse → call service → serialize
+│   │   │   ├── common.py         # Allow(roles), paging, date ranges, documented error responses
+│   │   │   ├── views.py          # presenters: ORM → response schemas, pagination, timelines
+│   │   │   └── routers/          # thin: role → load in scope → service → commit → present
 │   │   │       ├── auth.py
 │   │   │       ├── masters.py    # departments, users, suppliers, items, settings
 │   │   │       ├── prs.py
@@ -67,26 +71,36 @@ purchase-management/
 │   │   │       ├── dashboard.py
 │   │   │       └── audit.py
 │   │   └── seed/
-│   │       ├── seed.py           # drop + recreate + demo scenarios (D-41)
+│   │       ├── seed.py           # drop + recreate + demo scenarios built via services (D-49)
 │   │       └── verify.py         # invariant checks the seed must pass before committing
+│   ├── pytest.ini
 │   └── tests/
-│       ├── conftest.py           # in-memory SQLite, factories, users per role
-│       ├── test_state_machines.py
-│       ├── test_pr_approval_routing.py   # threshold routing + DEPT_HEAD escalation (D-01)
+│       ├── conftest.py           # fresh SQLite file per test, frozen clock, World helper (drives services)
+│       ├── test_state_machines.py        # exhaustive status × action table
+│       ├── test_numbering.py
+│       ├── test_pr_lifecycle.py          # create / edit / delete / submit
+│       ├── test_pr_approval_routing.py   # threshold routing + DEPT_HEAD escalation (D-01, D-12)
 │       ├── test_pr_resubmit.py           # chain restarts (D-02)
 │       ├── test_self_approval.py
-│       ├── test_budget_warning.py        # D-05
-│       ├── test_quotation_selection.py
-│       ├── test_po_creation_snapshot.py
-│       ├── test_po_cancel.py             # PR back to APPROVED (D-06)
+│       ├── test_budget_warning.py        # D-05, D-36
+│       ├── test_quotations.py            # rule 5, D-15, D-16, comparison
+│       ├── test_quotation_selection.py   # rule 6, D-14, D-33, D-50
+│       ├── test_po_creation_snapshot.py  # rule 7
+│       ├── test_po_cancel.py             # PR back to APPROVED (D-06, D-17)
 │       ├── test_po_short_close.py        # D-07
-│       ├── test_grn_partial.py
-│       ├── test_three_way_match.py
+│       ├── test_grn.py                   # rule 9, D-18
+│       ├── test_three_way_match.py       # rule 10, D-04, D-20, D-21, D-25
 │       ├── test_invoice_rematch_reject.py  # D-03
 │       ├── test_duplicate_invoice.py     # incl. REJECTED exclusion
 │       ├── test_payments_overpayment.py
-│       ├── test_po_auto_close.py         # from FULLY_RECEIVED and SHORT_CLOSED
-│       └── test_api_rbac.py              # role + scope access per endpoint, ADMIN read-only
+│       ├── test_po_auto_close.py         # from FULLY_RECEIVED and SHORT_CLOSED, D-34
+│       ├── test_service_rbac.py          # every action × every role, ADMIN read-only (D-09)
+│       ├── test_access_scoping.py        # read scopes, DRAFT privacy, 404 vs 403 (D-08, D-37, D-45)
+│       ├── test_masters.py               # D-10, D-19, D-22, D-23
+│       ├── test_audit_and_atomicity.py   # rule 15, D-28, D-46
+│       ├── test_seed.py                  # seed via services + verify (D-49)
+│       ├── test_api_demo_flow.py         # full P2P flow over HTTP + seeded scenarios
+│       └── test_api_access.py            # auth, 403/404/409/422 bodies, scoping, filters, dashboards, CORS
 │
 └── frontend/
     ├── package.json              # `npm run dev` is the one command
@@ -144,8 +158,8 @@ purchase-management/
 ```
 
 Layering rule: **router → service → model**. Routers never touch status fields directly; every
-status change goes through `state_machine.assert_transition()` and
-`audit_service.record_status_change()` inside the same DB transaction. The frontend hides
+status change goes through `state_machine.transition()` (which checks the table and writes the
+AuditLog row) inside the action's savepoint (D-46); the router commits. The frontend hides
 buttons a role can't use, but the backend is the only enforcement point.
 
 ---
@@ -464,6 +478,12 @@ stateDiagram-v2
 
 All under `/api`. JWT bearer on everything except `/auth/login` and `/auth/demo-users`.
 
+Implemented in Phase 4. Conventions are in D-54: decimal strings, `page`/`page_size`
+pagination, and `status` (repeatable), `department_id`, `supplier_id`, `po_id`, date-range and
+`q` filters on lists. Detail responses carry an `actions` list and `null` for parts the caller
+may not read. Every error has the shape `{error, message, details?}`. Swagger's Authorize
+uses the hidden `POST /auth/token` form login (D-55).
+
 Legend: **R** = REQUESTER, **DH** = DEPT_HEAD, **F** = FINANCE, **P** = PURCHASE,
 **S** = STORE, **A** = ACCOUNTS, **AD** = ADMIN, **All** = any authenticated user.
 Read scopes (D-08): **R⁺** = own PRs and documents linked to them; **DH⁺** = same for the
@@ -551,7 +571,7 @@ whole department. ADMIN can call every GET below; it can call no transactional P
 | Method | Path | Roles | Notes |
 |---|---|---|---|
 | GET | `/dashboard` | All | role-scoped widgets: pending approvals, POs by status, MISMATCH invoices, pending payments, dept spend vs budget |
-| GET | `/audit-logs` | All, scoped to entities the caller can read; AD all | `?entity_type=&entity_id=` powers timelines; `?limit=` for recent activity |
+| GET | `/audit-logs` | All, scoped to entities the caller can read (drafts: author only) | `?entity_type=&entity_id=&action=&at_from=&at_to=&order=asc\|desc`, paginated |
 
 ---
 

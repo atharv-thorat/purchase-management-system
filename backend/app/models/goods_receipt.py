@@ -51,7 +51,7 @@ class GRNLine(Base):
     po_line_id: Mapped[int] = mapped_column(ForeignKey("po_line.id"), index=True)
     qty_received: Mapped[Decimal] = mapped_column(Quantity)
     qty_accepted: Mapped[Decimal] = mapped_column(Quantity)
-    qty_rejected: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0"))
+    qty_rejected: Mapped[Decimal] = mapped_column(Quantity, default=Decimal("0.000"))
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
 
     grn: Mapped[GoodsReceipt] = relationship(back_populates="lines")

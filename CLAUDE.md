@@ -17,14 +17,19 @@
 - REQUESTER / DEPT_HEAD have scoped read-only visibility; ADMIN = master data + read-only.
 - Out-of-scope records return 404 (role with no access at all → 403).
 
+- DRAFT PRs are visible only to their author (D-45).
+- Expired quotations don't count for rule 6 ("< 2 quotes", "lowest"); shown but flagged (D-50).
+
 ## Build status
-- Phase 1 (design) done. Phase 2 (backend foundation) done: models, enums, constraints,
-  numbering, JWT auth, role dependency, visibility scoping, seed. No workflow services or
-  workflow endpoints yet — only `/api/health` and `/api/auth/*`.
+- Phase 1 (design) done. Phase 2 (models, auth, scoping, seed) done and committed.
+- Phase 3 (service layer + pytest suite) done: every SPEC rule in `app/services/`; the seed is
+  built through the services.
+- Phase 4 (REST API, 52 operations under `/api`, conventions in D-54) done. Next: frontend.
 
 ## Commands (from `backend/`)
 - `./run.sh` — venv + deps, seeds on first run, API on http://localhost:8000 (docs at `/docs`)
 - `./run.sh --reset` / `./reset_db.sh` — drop all tables, recreate, reseed (safe while running)
+- `.venv/bin/python -m pytest` — full suite (fresh SQLite file per test, ~10 s)
 - Demo users: `<role>@example.com` style, e.g. `requester.it@`, `head.ops@`, `finance@`; password `demo123`
 
 ## Conventions
@@ -35,5 +40,13 @@
 - Reads: use `app.services.access` (`scoped_select`, `get_visible_or_404`,
   `audit_visible_filter`). Writes: `require_roles(...)` in `app.core.deps`; never include ADMIN
   on a transactional endpoint.
-- Errors: raise `app.core.errors` types (409 transition, 422 rule, 403 role, 404 scope).
+- Errors: raise `app.core.errors` types (409 transition/status guard, 422 rule or bad input,
+  403 role, 404 scope). A failed three-way match is a MISMATCH result, not an error (D-51).
+- Routers: `user: Allow(roles)` → `access.get_visible_or_404` → service → `db.commit()` →
+  `views.*` presenter. GET role lists come from `access.readers(Model)`.
+- Money math: always `line_amount(qty, price)` (rounded to the paisa, D-53), never raw `*`.
+- Service actions: `@atomic` (SAVEPOINT), take `actor` first, check role with `ensure_role`,
+  status with `state_machine.check/require_status`, and never commit — the caller does (D-46).
+- Tests: use the `w` (World) fixture to reach any state via services; the clock is frozen at
+  `tests.conftest.NOW`; move it with `w.later(...)` or `clock.freeze(...)`.
 - The seed must pass `app/seed/verify.py`; extend the checks when adding invariants.

@@ -35,7 +35,7 @@ class Quotation(Base):
     valid_until: Mapped[date] = mapped_column(Date)
     delivery_days: Mapped[int]
     payment_terms: Mapped[str] = mapped_column(String(200))
-    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))  # Σ unit_price × PR qty (D-15)
+    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.00"))  # Σ unit_price × PR qty (D-15)
     is_selected: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("user.id"))
     created_at: Mapped[datetime] = mapped_column(default=now)

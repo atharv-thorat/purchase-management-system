@@ -1,4 +1,8 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
@@ -16,17 +20,35 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _ROLE_ORDER = list(Role)
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: DbSession) -> TokenResponse:
+def _authenticate(db, email: str, password: str) -> User:
     user = db.scalar(
-        select(User).options(joinedload(User.department)).where(func.lower(User.email) == body.email.strip().lower())
+        select(User).options(joinedload(User.department)).where(func.lower(User.email) == email.strip().lower())
     )
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or not verify_password(password, user.password_hash):
         raise Unauthorized("Incorrect email or password", code="INVALID_CREDENTIALS")
     if not user.is_active:
         raise Unauthorized("This account has been deactivated", code="USER_INACTIVE")
+    return user
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(body: LoginRequest, db: DbSession) -> TokenResponse:
+    """JSON login used by the frontend."""
+    user = _authenticate(db, body.email, body.password)
     token, expires_in = create_access_token(user.id, user.role)
     return TokenResponse(access_token=token, expires_in=expires_in, user=UserOut.model_validate(user))
+
+
+class OAuthToken(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@router.post("/token", response_model=OAuthToken, include_in_schema=False)
+def token(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: DbSession) -> OAuthToken:
+    """Form login for Swagger's Authorize dialog: username = email, password = demo123."""
+    user = _authenticate(db, form.username, form.password)
+    return OAuthToken(access_token=create_access_token(user.id, user.role)[0])
 
 
 @router.get("/me", response_model=UserOut)

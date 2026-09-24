@@ -28,7 +28,7 @@ class PurchaseRequest(Base):
     justification: Mapped[str] = mapped_column(Text)
     required_by: Mapped[date] = mapped_column(Date)
     status: Mapped[PRStatus] = mapped_column(enum_column(PRStatus), default=PRStatus.DRAFT, index=True)
-    estimated_total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))  # Σ lines (D-29)
+    estimated_total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.00"))  # Σ lines (D-29)
     rejection_reason: Mapped[str | None] = mapped_column(Text)  # latest rejection comment
     submitted_at: Mapped[datetime | None]  # latest (re)submission
     final_approved_at: Mapped[datetime | None]  # drives the budget month (D-05)
