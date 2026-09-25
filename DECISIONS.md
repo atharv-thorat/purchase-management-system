@@ -501,3 +501,15 @@ Q-numbers refer to the open questions in the first design pass (2026-09-24).
   - A 403 is shown as "No access" with the API's message, not as a retryable error.
 - **Why:** The demo has to work first time on an interviewer-facing laptop, with or without
   Wi-Fi, and recover from any mid-demo mistake in one command.
+
+### D-59 — Status history shows the transition and who made it
+- **Source:** Owner (post-Phase 6 review)
+- **Decision:** Each history entry is titled from the audit row's action and recorded level
+  ("Approved by department head", "Approved by finance", "Invoice entered", "Three-way match
+  passed"). Under the title the change is shown as `[from] → [to]`, with the old status muted;
+  a creation shows only the new status, and a step that leaves the status unchanged says so.
+  Automatic steps are credited to **System** rather than to the user whose action triggered
+  them: the three-way match result, PO auto-close, and a PR reopening when its PO is cancelled
+  (all marked "(system)" in DESIGN.md §3). Display only; the audit rows are unchanged.
+- **Why:** A single badge beside "Approved" read as the current status ("Approved [Pending
+  finance]"), which was confusing. Showing both sides makes each step self-explanatory.

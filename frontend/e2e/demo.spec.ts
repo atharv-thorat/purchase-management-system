@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { E2E_API } from "../playwright.config";
-import { blockExternalRequests, collectPageErrors, loginAs, snap, switchUser, toast } from "./helpers";
+import { blockExternalRequests, collectPageErrors, loginAs, snap, switchUser, timelineEntry, toast } from "./helpers";
 
 // The live demo, end to end in a real browser, each step by the role that owns it. The data is
 // the demo seed (fresh for every run); new documents continue its numbering (PR-0009, PO-0004…).
@@ -59,6 +59,15 @@ test("full procure-to-pay flow, offline", async ({ page }, testInfo) => {
     await page.getByRole("button", { name: "Approve" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Approve" }).click();
     await expect(badge).toHaveText("Approved");
+
+    // The history states each transition and who made it, not just the new status.
+    const byHead = timelineEntry(page, "Approved by department head");
+    await expect(byHead).toContainText(/Pending dept head.*Pending finance/);
+    await expect(byHead).toContainText("Neha Iyer");
+    const byFinance = timelineEntry(page, "Approved by finance");
+    await expect(byFinance).toContainText(/Pending finance.*Approved/);
+    await expect(byFinance).toContainText("Priya Nair");
+    await expect(timelineEntry(page, "Request created")).not.toContainText("→"); // no "from" on creation
   });
 
   await test.step("purchase compares three quotations; a dearer pick needs a reason", async () => {
@@ -120,6 +129,11 @@ test("full procure-to-pay flow, offline", async ({ page }, testInfo) => {
     await page.waitForURL(/\/invoices\/\d+$/);
     await expect(page.getByText("MISMATCH", { exact: true })).toBeVisible();
     await expect(page.getByText("Safety Helmet: invoiced 50, accepted 40")).toHaveCount(2); // banner + history
+    await expect(timelineEntry(page, "Invoice entered")).toContainText("Anita Desai");
+    const matchFailed = timelineEntry(page, "Three-way match failed");
+    await expect(matchFailed).toContainText(/Pending match.*Mismatch/);
+    await expect(matchFailed).toContainText("System"); // automatic step, not credited to Anita
+    await expect(matchFailed).not.toContainText("Anita Desai");
     await snap(page, testInfo, "06-invoice-mismatch", true);
   });
   const invoiceUrl = page.url();
@@ -150,6 +164,11 @@ test("full procure-to-pay flow, offline", async ({ page }, testInfo) => {
     await page.goto(poUrl);
     await expect(badge).toHaveText("Closed");
     await expect(page.getByText("50 / 50 pcs")).toHaveCount(2); // accepted and invoiced bars
+    const autoClose = timelineEntry(page, "Closed automatically");
+    await expect(autoClose).toContainText(/Fully received.*Closed/);
+    await expect(autoClose).toContainText("System");
+    await expect(autoClose).toContainText("after the payment");
+    await expect(autoClose).not.toContainText("Anita Desai");
     await snap(page, testInfo, "07-po-detail-closed", true);
   });
 

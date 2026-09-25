@@ -39,6 +39,11 @@ export async function switchUser(page: Page, name: string) {
   await expect(page.getByRole("banner")).toContainText(name);
 }
 
+/** One entry of a status history, found by its title ("Approved by finance"). */
+export function timelineEntry(page: Page, title: string) {
+  return page.getByTestId("timeline-entry").filter({ has: page.getByText(title, { exact: true }) });
+}
+
 export function toast(page: Page) {
   return page.locator(".fixed [role='status'], .fixed [role='alert']").last();
 }
@@ -46,10 +51,11 @@ export function toast(page: Page) {
 /** With UPDATE_SCREENSHOTS=1 the README screenshots in docs/screenshots are regenerated. */
 export async function snap(page: Page, testInfo: TestInfo, name: string, fullPage = false) {
   await page.waitForTimeout(250);
-  const shot = await page.screenshot({ fullPage });
+  const style = "[aria-live] { display: none !important; }"; // keep transient toasts out of screenshots
+  const shot = await page.screenshot({ fullPage, style });
   await testInfo.attach(name, { body: shot, contentType: "image/png" });
   if (process.env.UPDATE_SCREENSHOTS) {
     const file = path.resolve(__dirname, "../../docs/screenshots", `${name}.png`);
-    await page.screenshot({ path: file, fullPage });
+    await page.screenshot({ path: file, fullPage, style });
   }
 }
